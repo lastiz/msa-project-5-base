@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: shipment-db
+type: Opaque
+stringData:
+  POSTGRES_DB: transport
+  POSTGRES_USER: exporter
+  POSTGRES_PASSWORD: exporter
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shipment-db-init
+data:
+  init.sql: |
+    CREATE TABLE shipments (
+        id INTEGER PRIMARY KEY,
+        origin TEXT NOT NULL,
+        destination TEXT NOT NULL,
+        weight_kg INTEGER NOT NULL,
+        status TEXT NOT NULL
+    );
+
+    INSERT INTO shipments (id, origin, destination, weight_kg, status) VALUES
+        (101, 'Perm', 'Ufa', 840, 'delivered'),
+        (102, 'Omsk', 'Tomsk', 2360, 'in_transit'),
+        (103, 'Tver', 'Pskov', 360, 'planned'),
+        (104, 'Ryazan', 'Penza', 720, 'delivered');
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shipment-db
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: shipment-db
+  template:
+    metadata:
+      labels:
+        app: shipment-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16.6
+          envFrom:
+            - secretRef:
+                name: shipment-db
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "exporter", "-d", "transport", "-h", "127.0.0.1"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: database
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: exports
+              mountPath: /exports
+              readOnly: true
+      volumes:
+        - name: database
+          emptyDir: {}
+        - name: init
+          configMap:
+            name: shipment-db-init
+        - name: exports
+          persistentVolumeClaim:
+            claimName: shipment-exports
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shipment-db
+spec:
+  selector:
+    app: shipment-db
+  ports:
+    - port: 5432
+      targetPort: 5432
