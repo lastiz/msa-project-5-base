@@ -1,0 +1,17 @@
+@startuml c4-to-be
+!include <C4/C4_Context>
+
+title Прайс-листы B2B: контекст системы To Be
+
+Person(client, "B2B-клиент", "Получает прайс-лист со своими ценами")
+
+System(exporter, "Система выгрузки прайс-листов", "Приложение, запускаемое CronJob ежедневно в 06:00. Формирует CSV для каждого клиента")
+SystemDb_Ext(postgres, "БД прайс-листов", "PostgreSQL. Таблицы: products, categories, clients, client_prices")
+System_Ext(elk, "ELK", "Elasticsearch, Logstash, Kibana. Сбор, хранение и просмотр логов выгрузки")
+System_Ext(storage, "Хранилище прайс-листов", "Хранит готовые CSV с ограниченным доступом")
+
+Rel(exporter, postgres, "Читает и объединяет данные четырех таблиц", "SQL")
+Rel(exporter, storage, "Сохраняет CSV по клиентам и датам", "HTTPS")
+Rel(client, storage, "Скачивает только свой прайс-лист", "HTTPS")
+Rel(exporter, elk, "Логи контейнера поступают через сборщик логов Kubernetes")
+@enduml

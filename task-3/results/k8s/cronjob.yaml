@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: shipment-export
+spec:
+  schedule: "0 20 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: exporter
+              image: shipment-export:1.0
+              imagePullPolicy: Never
+              env:
+                - name: PGHOST
+                  value: shipment-db
+                - name: PGDATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: shipment-db
+                      key: POSTGRES_DB
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: shipment-db
+                      key: POSTGRES_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: shipment-db
+                      key: POSTGRES_PASSWORD
+                - name: EXPORT_PATH
+                  value: /exports/shipments.csv
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              volumeMounts:
+                - name: exports
+                  mountPath: /exports
+          volumes:
+            - name: exports
+              persistentVolumeClaim:
+                claimName: shipment-exports

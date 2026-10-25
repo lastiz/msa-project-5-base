@@ -1,0 +1,46 @@
+@startuml c4-to-be
+!include <C4/C4_Container>
+
+title TradeWare: мониторинг, логирование и оповещения
+
+Person(employee, "Сотрудник склада", "Загружает CSV и получает результат обработки")
+Person(operator, "DevOps", "Проверяет состояние системы и разбирает ошибки")
+System_Ext(mail, "Почтовый сервис", "Доставка уведомлений дежурному")
+
+System_Boundary(tradeware, "TradeWare") {
+    Container(ui, "Интерфейс ERP", "Angular", "Загрузка файла и отображение статуса")
+    Container(monolith, "Существующий монолит", "Java 11, WildFly", "Принимает отчеты, регистрирует задания и сообщает результат")
+    Container(batch, "Сервис обработки отчетов", "Spring Boot, Spring Batch", "Читает CSV, проверяет и обогащает данные, записывает порциями")
+    ContainerDb(nomenclature, "БД номенклатуры", "PostgreSQL в GCP", "Номенклатура и остатки. Отдельная служебная схема: очередь заданий, статусы и JobRepository")
+    ContainerDb(reference, "БД справочных данных о товарах", "PostgreSQL в GCP", "Характеристики товаров и другие данные для обогащения отчетов")
+    Container(gcs, "Хранилище отчетов", "Google Cloud Storage", "Исходные CSV с неизменяемыми именами")
+    Container(db_metrics, "Сборщики метрик БД", "Экспортеры PostgreSQL", "Предоставляют статистику обеих БД для Prometheus")
+    Container(prometheus, "Метрики", "Prometheus", "Опрашивает источники и хранит временные ряды")
+    Container(grafana, "Дашборды и оповещения", "Grafana", "Отображает метрики, проверяет правила и отправляет уведомления")
+    Container(filebeat, "Сборщики логов", "Filebeat", "Читают журналы монолита и сервиса обработки")
+    Container(elk, "Централизованные логи", "Logstash, Elasticsearch, Kibana", "Прием, обработка, хранение и поиск логов")
+}
+
+Rel(employee, ui, "Загружает отчет и видит результат")
+Rel(ui, monolith, "Передает файл, запрашивает статус", "HTTPS")
+Rel(monolith, ui, "Сообщает завершение или ошибку", "WebSocket")
+Rel(monolith, gcs, "Сохраняет исходный CSV", "HTTPS")
+Rel(monolith, nomenclature, "Регистрирует задания, читает статусы, выполняет существующие операции с номенклатурой", "SQL")
+Rel(monolith, reference, "Читает справочные данные для существующих функций ERP", "SQL")
+Rel(batch, reference, "Читает данные для обогащения отчета", "SQL")
+Rel(batch, nomenclature, "Забирает задания, обновляет остатки и сохраняет состояние", "SQL")
+Rel(batch, gcs, "Читает файл принятого отчета", "HTTPS")
+Rel(prometheus, monolith, "Собирает метрики приложения", "HTTP, внутренняя сеть")
+Rel(prometheus, batch, "Собирает метрики приложения и обработки отчетов", "HTTP, внутренняя сеть")
+Rel(db_metrics, nomenclature, "Читает статистику БД", "SQL")
+Rel(db_metrics, reference, "Читает статистику БД", "SQL")
+Rel(prometheus, db_metrics, "Собирает метрики обеих БД", "HTTP, внутренняя сеть")
+Rel(grafana, prometheus, "Запрашивает метрики для дашбордов и правил", "HTTP, внутренняя сеть")
+Rel(operator, grafana, "Просматривает дашборды", "HTTPS")
+Rel(grafana, mail, "Отправляет оповещения", "SMTP с TLS")
+Rel(mail, operator, "Доставляет уведомления", "Email")
+Rel(filebeat, monolith, "Читает журналы приложения", "Файлы логов")
+Rel(filebeat, batch, "Читает журналы приложения", "Файлы логов")
+Rel(filebeat, elk, "Передает записи в Logstash")
+Rel(operator, elk, "Ищет события отчета в Kibana", "HTTPS")
+@enduml

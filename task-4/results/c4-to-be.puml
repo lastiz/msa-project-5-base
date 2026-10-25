@@ -1,0 +1,26 @@
+@startuml c4-to-be
+!include <C4/C4_Container>
+
+title TradeWare: обработка складских отчетов, To Be
+
+Person(employee, "Сотрудник склада", "Загружает CSV и получает результат обработки")
+
+System_Boundary(tradeware, "TradeWare") {
+    Container(ui, "Интерфейс ERP", "Angular", "Загрузка файла и отображение статуса")
+    Container(monolith, "Существующий монолит", "Java 11, WildFly", "Проверяет формат, сохраняет файл, регистрирует задание и сообщает результат")
+    Container(batch, "Сервис обработки отчетов", "Spring Boot, Spring Batch", "Забирает задания из БД, читает CSV, проверяет и обогащает строки, записывает порциями")
+    ContainerDb(nomenclature, "БД номенклатуры", "PostgreSQL в GCP", "Номенклатура и остатки. Отдельная служебная схема: очередь заданий, статусы и JobRepository")
+    ContainerDb(reference, "БД справочных данных о товарах", "PostgreSQL в GCP", "Характеристики товаров и другие данные для обогащения отчетов")
+    Container(gcs, "Хранилище отчетов", "Google Cloud Storage", "Исходные CSV с неизменяемыми именами")
+}
+
+Rel(employee, ui, "Загружает отчет и видит результат")
+Rel(ui, monolith, "Передает файл, запрашивает статус", "HTTPS")
+Rel(monolith, ui, "Сообщает завершение или ошибку", "WebSocket")
+Rel(monolith, gcs, "Сохраняет исходный CSV", "HTTPS")
+Rel(monolith, nomenclature, "Регистрирует задания, читает статусы, выполняет существующие операции с номенклатурой", "SQL")
+Rel(monolith, reference, "Читает справочные данные для существующих функций ERP", "SQL")
+Rel(batch, reference, "Читает данные для обогащения отчета", "SQL")
+Rel(batch, nomenclature, "Забирает задания, обновляет остатки и сохраняет состояние", "SQL")
+Rel(batch, gcs, "Читает файл принятого отчета", "HTTPS")
+@enduml
